@@ -219,3 +219,20 @@ best results!
 `,
 	)
 }
+
+
+ask :: proc(question: string) -> (string, os.Error) {
+	fmt.print(question)
+
+	buf: [256]byte
+	n, err := os.read(os.stdin, buf[:])
+
+	if err != nil {
+		log.error("Error reading: ", err)
+		return "", err
+	}
+
+	str := string(buf[:n])
+	str = strings.trim(str, " \n\t\r")
+	return strings.clone(str), nil
+}
