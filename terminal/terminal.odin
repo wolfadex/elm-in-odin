@@ -18,6 +18,12 @@ Command :: struct {
 	summary: string,
 	details: string,
 	example: string,
+	run:     proc(_: []string),
+}
+
+
+exit_with_help :: proc(command: Command) {
+	log.debug("Implement `exit_with_help`")
 }
 
 exit_with_unknown :: proc(commands: []Command, command_name: string) {

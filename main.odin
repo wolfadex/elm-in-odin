@@ -11,6 +11,7 @@ import "core:strings"
 import "core:time"
 import "core:unicode"
 import "core:unicode/utf8"
+import "init"
 import "terminal"
 
 
@@ -62,12 +63,6 @@ main :: proc() {
 		defer reset_tracking_allocator(&tracking_allocator)
 	}
 
-	if len(os.args) > 2 {
-		fmt.println("Usage: jlox [script]")
-		os.exit(64)
-	}
-
-
 	if len(os.args) == 1 {
 		terminal.exit_with_overview(KNOWN_COMMANDS)
 	}
@@ -77,9 +72,38 @@ main :: proc() {
 		terminal.exit_with_overview(KNOWN_COMMANDS)
 	case "--version":
 		fmt.println("0.19.1-Odin")
-	case "init":
 	case:
-		terminal.exit_with_unknown(KNOWN_COMMANDS, os.args[1])
+		command: union {
+			terminal.Command,
+		}
+
+		for c in KNOWN_COMMANDS {
+			if c.name == os.args[1] {
+				command = c
+				break
+			}
+		}
+
+		switch cmd in command {
+		case nil:
+			terminal.exit_with_unknown(KNOWN_COMMANDS, os.args[1])
+		case terminal.Command:
+			remaining_args := os.args[2:]
+			wants_help: bool
+
+			for arg in remaining_args {
+				if arg == "--help" {
+					wants_help = true
+					break
+				}
+			}
+
+			if wants_help {
+				terminal.exit_with_help(cmd)
+			} else {
+				cmd.run(remaining_args)
+			}
+		}
 	}
 
 	// if len(os.args) == 2 {
@@ -110,6 +134,7 @@ link explaining what to do from there.`,
 	details = "The `init` command helps start Elm projects:",
 	example = `It will ask permission to create an elm.json file, the one thing common
 to all Elm projects. It also provides a link explaining what to do from there.`,
+	run     = init.run,
 }
 
 REACTOR :: terminal.Command {
