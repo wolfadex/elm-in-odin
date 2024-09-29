@@ -66,9 +66,15 @@ main :: proc() {
 		os.exit(64)
 	}
 
+
+	if len(os.args) == 1 {
+		exit_with_overview()
+	}
+
 	switch os.args[1] {
 	case "init":
-		exit_with_overview({REPL, INIT, REACTOR, MAKE, INSTALL, BUMP, DIFF, PUBLISH})
+	case:
+		exit_with_unknown(os.args[1])
 	}
 
 	// if len(os.args) == 2 {
@@ -119,6 +125,9 @@ Command :: struct {
 	details: string,
 	example: string,
 }
+
+KNOWN_COMMANDS: []Command : {REPL, INIT, REACTOR, MAKE, INSTALL, BUMP, DIFF, PUBLISH}
+KNOWN_COMMANDS_MIN: []Command : {REPL, INIT, REACTOR}
 
 REPL :: Command {
 	name    = "repl",
@@ -186,11 +195,116 @@ PUBLISH :: Command {
 }
 
 
-exit_with_overview :: proc(commands: []Command) {
+exit_with_unknown :: proc(command_name: string) {
+	nearby_knowns: [dynamic]string = {}
+	defer delete(nearby_knowns)
+
+	for command in KNOWN_COMMANDS {
+		dist, err := strings.levenshtein_distance(command_name, command.name)
+		if dist <= 3 {
+			append(&nearby_knowns, command.name)
+		}
+	}
+
+	fmt.printf(
+		"There is no " +
+		ansi.CSI +
+		ansi.FG_BRIGHT_RED +
+		ansi.SGR +
+		"%s" +
+		ansi.CSI +
+		ansi.RESET +
+		ansi.SGR +
+		" command. ",
+		command_name,
+	)
+
+	nearby := len(nearby_knowns)
+
+	if nearby > 2 {
+		fmt.printf(
+			"Try " +
+			ansi.CSI +
+			ansi.FG_BRIGHT_GREEN +
+			ansi.SGR +
+			"%s" +
+			ansi.CSI +
+			ansi.RESET +
+			ansi.SGR,
+			nearby_knowns[0],
+		)
+		for i := 1; i < nearby - 1; i += 1 {
+			fmt.printf(
+				", " +
+				ansi.CSI +
+				ansi.FG_BRIGHT_GREEN +
+				ansi.SGR +
+				"%s" +
+				ansi.CSI +
+				ansi.RESET +
+				ansi.SGR,
+				nearby_knowns[i],
+			)
+		}
+		fmt.printf(
+			" or " +
+			ansi.CSI +
+			ansi.FG_BRIGHT_GREEN +
+			ansi.SGR +
+			"%s" +
+			ansi.CSI +
+			ansi.RESET +
+			ansi.SGR +
+			" instead?",
+			nearby_knowns[nearby - 1],
+		)
+
+	} else if nearby > 1 {
+		fmt.printf(
+			"Try " +
+			ansi.CSI +
+			ansi.FG_BRIGHT_GREEN +
+			ansi.SGR +
+			"%s" +
+			ansi.CSI +
+			ansi.RESET +
+			ansi.SGR +
+			" or " +
+			ansi.CSI +
+			ansi.FG_BRIGHT_GREEN +
+			ansi.SGR +
+			"%s" +
+			ansi.CSI +
+			ansi.RESET +
+			ansi.SGR +
+			" instead?",
+			nearby_knowns[0],
+			nearby_knowns[1],
+		)
+	} else if nearby > 0 {
+		fmt.printf(
+			"Try " +
+			ansi.CSI +
+			ansi.FG_BRIGHT_GREEN +
+			ansi.SGR +
+			"%s" +
+			ansi.CSI +
+			ansi.RESET +
+			ansi.SGR +
+			" instead?",
+			nearby_knowns[0],
+		)
+	}
+
+	fmt.print("\n\nRun `elm` with no arguments to get more hints.\n\n")
+}
+
+
+exit_with_overview :: proc() {
 	intro()
 	fmt.print("\nThe most common commands are:\n\n")
 
-	for command in commands[:min(len(commands), 3)] {
+	for command in KNOWN_COMMANDS_MIN {
 		fmt.printf(
 			"    " +
 			ansi.CSI +
@@ -214,11 +328,11 @@ exit_with_overview :: proc(commands: []Command) {
 
 	longest_cmd: int
 
-	for command in commands {
+	for command in KNOWN_COMMANDS {
 		longest_cmd = max(longest_cmd, len(command.name))
 	}
 
-	for command in commands {
+	for command in KNOWN_COMMANDS {
 		padded_cmd_name := strings.left_justify(command.name, longest_cmd, " ")
 		defer delete(padded_cmd_name)
 		fmt.printf(
