@@ -108,6 +108,7 @@ outro :: proc() {
 		`Be sure to ask on the Elm slack if you run into trouble! Folks are friendly and
 happy to help out. They hang out there because it is fun, so be kind to get the
 best results!
+
 `,
 	)
 }
@@ -121,8 +122,8 @@ Command :: struct {
 
 REPL :: Command {
 	name    = "repl",
-	summary = `Open up an interactive programming session. Type in Elm expressions
-like (2 + 2) or (String.length \"test\") and see if they equal four!`,
+	summary = `Open up an interactive programming session. Type in Elm expressions like
+(2 + 2) or (String.length "test") and see if they equal four!`,
 	details = "The `repl` command opens up an interactive programming session:",
 	example = `Start working through <https://guide.elm-lang.org> to learn how to use this!
 It has a whole chapter that uses the REPL for everything, so that is probably
@@ -131,8 +132,8 @@ the quickest way to get started.`,
 
 INIT :: Command {
 	name    = "init",
-	summary = `Start an Elm project. It creates a starter elm.json file and
-provides a link explaining what to do from there.`,
+	summary = `Start an Elm project. It creates a starter elm.json file and provides a
+link explaining what to do from there.`,
 	details = "The `init` command helps start Elm projects:",
 	example = `It will ask permission to create an elm.json file, the one thing common
 to all Elm projects. It also provides a link explaining what to do from there.`,
@@ -211,7 +212,15 @@ exit_with_overview :: proc(commands: []Command) {
 
 	fmt.print("There are a bunch of other commands as well though. Here is a full list:\n\n")
 
+	longest_cmd: int
+
 	for command in commands {
+		longest_cmd = max(longest_cmd, len(command.name))
+	}
+
+	for command in commands {
+		padded_cmd_name := strings.left_justify(command.name, longest_cmd, " ")
+		defer delete(padded_cmd_name)
 		fmt.printf(
 			"    " +
 			ansi.CSI +
@@ -221,7 +230,7 @@ exit_with_overview :: proc(commands: []Command) {
 			ansi.CSI +
 			ansi.RESET +
 			ansi.SGR,
-			command.name,
+			padded_cmd_name,
 		)
 	}
 
