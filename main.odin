@@ -11,6 +11,7 @@ import "core:strings"
 import "core:time"
 import "core:unicode"
 import "core:unicode/utf8"
+import "terminal"
 
 
 state := struct {
@@ -68,13 +69,17 @@ main :: proc() {
 
 
 	if len(os.args) == 1 {
-		exit_with_overview()
+		terminal.exit_with_overview(KNOWN_COMMANDS)
 	}
 
 	switch os.args[1] {
+	case "--help":
+		terminal.exit_with_overview(KNOWN_COMMANDS)
+	case "--version":
+		fmt.println("0.19.1-Odin")
 	case "init":
 	case:
-		exit_with_unknown(os.args[1])
+		terminal.exit_with_unknown(KNOWN_COMMANDS, os.args[1])
 	}
 
 	// if len(os.args) == 2 {
@@ -84,52 +89,11 @@ main :: proc() {
 	// }
 }
 
-intro :: proc() {
-	fmt.print(
-		"Hi, thank you for trying out " +
-		ansi.CSI +
-		ansi.FG_BRIGHT_GREEN +
-		ansi.SGR +
-		"Elm (0.19.1-Odin)" +
-		ansi.CSI +
-		ansi.RESET +
-		ansi.SGR +
-		". I hope you like it!\n\n" +
-		ansi.CSI +
-		ansi.FG_BRIGHT_BLACK +
-		ansi.SGR +
-		"-------------------------------------------------------------------------------\n" +
-		"I highly recommend working through <https://guide.elm-lang.org> to get started.\n" +
-		"It teaches many important concepts, including how to use `elm` in the terminal.\n" +
-		"-------------------------------------------------------------------------------" +
-		ansi.CSI +
-		ansi.RESET +
-		ansi.SGR +
-		"\n",
-	)
-}
 
-outro :: proc() {
-	fmt.print(
-		`Be sure to ask on the Elm slack if you run into trouble! Folks are friendly and
-happy to help out. They hang out there because it is fun, so be kind to get the
-best results!
+KNOWN_COMMANDS: []terminal.Command : {REPL, INIT, REACTOR, MAKE, INSTALL, BUMP, DIFF, PUBLISH}
+KNOWN_COMMANDS_MIN: []terminal.Command : {REPL, INIT, REACTOR}
 
-`,
-	)
-}
-
-Command :: struct {
-	name:    string,
-	summary: string,
-	details: string,
-	example: string,
-}
-
-KNOWN_COMMANDS: []Command : {REPL, INIT, REACTOR, MAKE, INSTALL, BUMP, DIFF, PUBLISH}
-KNOWN_COMMANDS_MIN: []Command : {REPL, INIT, REACTOR}
-
-REPL :: Command {
+REPL :: terminal.Command {
 	name    = "repl",
 	summary = `Open up an interactive programming session. Type in Elm expressions like
 (2 + 2) or (String.length "test") and see if they equal four!`,
@@ -139,7 +103,7 @@ It has a whole chapter that uses the REPL for everything, so that is probably
 the quickest way to get started.`,
 }
 
-INIT :: Command {
+INIT :: terminal.Command {
 	name    = "init",
 	summary = `Start an Elm project. It creates a starter elm.json file and provides a
 link explaining what to do from there.`,
@@ -148,7 +112,7 @@ link explaining what to do from there.`,
 to all Elm projects. It also provides a link explaining what to do from there.`,
 }
 
-REACTOR :: Command {
+REACTOR :: terminal.Command {
 	name    = "reactor",
 	summary = `Compile code with a click. It opens a file viewer in your browser, and
 when you click on an Elm file, it compiles and you see the result.`,
@@ -159,198 +123,39 @@ click on an Elm file, it will compile it for you! And you can just press
 the refresh button in the browser to recompile things.`,
 }
 
-MAKE :: Command {
+MAKE :: terminal.Command {
 	name    = "make",
 	summary = ``,
 	details = "The `make` command compiles Elm code into JS or HTML:",
 	example = ``,
 }
 
-INSTALL :: Command {
+INSTALL :: terminal.Command {
 	name    = "install",
 	summary = ``,
 	details = "The `install` command fetches packages from <https://package.elm-lang.org> for use in your project:",
 	example = ``,
 }
 
-BUMP :: Command {
+BUMP :: terminal.Command {
 	name    = "bump",
 	summary = ``,
 	details = "The `bump` command figures out the next version number based on API changes:",
 	example = ``,
 }
 
-DIFF :: Command {
+DIFF :: terminal.Command {
 	name    = "diff",
 	summary = ``,
 	details = "The `diff` command detects API changes:",
 	example = ``,
 }
 
-PUBLISH :: Command {
+PUBLISH :: terminal.Command {
 	name    = "publish",
 	summary = ``,
 	details = "The `publish` command publishes your package on <https://package.elm-lang.org> so that anyone in the Elm community can use it.",
 	example = ``,
-}
-
-
-exit_with_unknown :: proc(command_name: string) {
-	nearby_knowns: [dynamic]string = {}
-	defer delete(nearby_knowns)
-
-	for command in KNOWN_COMMANDS {
-		dist, err := strings.levenshtein_distance(command_name, command.name)
-		if dist <= 3 {
-			append(&nearby_knowns, command.name)
-		}
-	}
-
-	fmt.printf(
-		"There is no " +
-		ansi.CSI +
-		ansi.FG_BRIGHT_RED +
-		ansi.SGR +
-		"%s" +
-		ansi.CSI +
-		ansi.RESET +
-		ansi.SGR +
-		" command. ",
-		command_name,
-	)
-
-	nearby := len(nearby_knowns)
-
-	if nearby > 2 {
-		fmt.printf(
-			"Try " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_GREEN +
-			ansi.SGR +
-			"%s" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR,
-			nearby_knowns[0],
-		)
-		for i := 1; i < nearby - 1; i += 1 {
-			fmt.printf(
-				", " +
-				ansi.CSI +
-				ansi.FG_BRIGHT_GREEN +
-				ansi.SGR +
-				"%s" +
-				ansi.CSI +
-				ansi.RESET +
-				ansi.SGR,
-				nearby_knowns[i],
-			)
-		}
-		fmt.printf(
-			" or " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_GREEN +
-			ansi.SGR +
-			"%s" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR +
-			" instead?",
-			nearby_knowns[nearby - 1],
-		)
-
-	} else if nearby > 1 {
-		fmt.printf(
-			"Try " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_GREEN +
-			ansi.SGR +
-			"%s" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR +
-			" or " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_GREEN +
-			ansi.SGR +
-			"%s" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR +
-			" instead?",
-			nearby_knowns[0],
-			nearby_knowns[1],
-		)
-	} else if nearby > 0 {
-		fmt.printf(
-			"Try " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_GREEN +
-			ansi.SGR +
-			"%s" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR +
-			" instead?",
-			nearby_knowns[0],
-		)
-	}
-
-	fmt.print("\n\nRun `elm` with no arguments to get more hints.\n\n")
-}
-
-
-exit_with_overview :: proc() {
-	intro()
-	fmt.print("\nThe most common commands are:\n\n")
-
-	for command in KNOWN_COMMANDS_MIN {
-		fmt.printf(
-			"    " +
-			ansi.CSI +
-			ansi.FG_BRIGHT_CYAN +
-			ansi.SGR +
-			"elm %s\n" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR,
-			command.name,
-		)
-		summary_lines := strings.split(command.summary, "\n")
-		defer delete(summary_lines)
-		for line in summary_lines {
-			fmt.printf("        %s\n", line)
-		}
-		fmt.print("\n")
-	}
-
-	fmt.print("There are a bunch of other commands as well though. Here is a full list:\n\n")
-
-	longest_cmd: int
-
-	for command in KNOWN_COMMANDS {
-		longest_cmd = max(longest_cmd, len(command.name))
-	}
-
-	for command in KNOWN_COMMANDS {
-		padded_cmd_name := strings.left_justify(command.name, longest_cmd, " ")
-		defer delete(padded_cmd_name)
-		fmt.printf(
-			"    " +
-			ansi.CSI +
-			ansi.FG_CYAN +
-			ansi.SGR +
-			"elm %s --help\n" +
-			ansi.CSI +
-			ansi.RESET +
-			ansi.SGR,
-			padded_cmd_name,
-		)
-	}
-
-	fmt.print("\nAdding the --help flag gives a bunch of additional details about each one.\n\n")
-
-	outro()
 }
 
 
