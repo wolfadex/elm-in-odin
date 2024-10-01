@@ -134,49 +134,50 @@ create_elm_json :: proc() {
 
 
 parse_registry :: proc(data: []u8) -> Registry {
+	// The first 8 bytes are the count of total package verseions
 	package_versions_count, package_versions_count_ok := endian.get_u64(
 		data[:8],
 		endian.Byte_Order.Big,
 	)
+	// The next 8 bytes are the count of total packages
 	packages_count, packages_count_ok := endian.get_u64(data[8:16], endian.Byte_Order.Big)
-	// log.debug("package_versions_count", package_versions_count, package_versions_count_ok)
-	// log.debug("packages_count", packages_count, packages_count_ok)
-
 
 	packages: map[string]KnownVersions
 
 	byte_offset: u64 = 16
 
+	// Now we gather the package info
 	for package_offset := 0; package_offset < int(packages_count); package_offset += 1 {
-		// for package_offset := 0; package_offset < 2; package_offset += 1 {
-
+		// For each package
+		// the first byte is the length of the user name
 		user_name_length := u64(data[byte_offset])
 		byte_offset += 1
+		// then we decode that name
 		user_name := string(data[byte_offset:byte_offset + user_name_length])
-		// log.debug("user_name", user_name)
 		byte_offset += user_name_length
 
-
+		// next comes the length of the project name
 		project_name_length := u64(data[byte_offset])
 		byte_offset += 1
+		// which we then decode
 		project_name := string(data[byte_offset:byte_offset + project_name_length])
-		// log.debug("project_name", project_name)
 		byte_offset += project_name_length
 
+		// the next 3 bytes are the newest version
 		newest_version, next_offset := version.decode_bytes(data, byte_offset)
 		byte_offset = next_offset
-		// log.debug("latest version", newest_version)
 
+		// followed by the count of the previous versions
 		previous_versions_count, previous_versions_count_ok := endian.get_u64(
 			data[byte_offset:byte_offset + 8],
 			endian.Byte_Order.Big,
 		)
-		// log.debug("previous_versions_count", previous_versions_count)
 		byte_offset += 8
 
 		previous_versions: [dynamic]version.Version
 		reserve(&previous_versions, previous_versions_count)
 
+		// which we then decode
 		for versions_decoded: u64 = 0;
 		    versions_decoded < previous_versions_count;
 		    versions_decoded += 1 {
@@ -186,11 +187,11 @@ parse_registry :: proc(data: []u8) -> Registry {
 			byte_offset = following_offset
 		}
 
+		// culminating in our KnownVersions
 		known_versions := KnownVersions {
 			newest   = newest_version,
 			previous = previous_versions,
 		}
-		// log.debug("known_versions", known_versions)
 
 		package_name, package_name_err := strings.join({user_name, project_name}, "/")
 
@@ -198,11 +199,10 @@ parse_registry :: proc(data: []u8) -> Registry {
 			log.error("Error making package name", package_name_err)
 		}
 
+		// and finally the full package
 		map_insert(&packages, package_name, known_versions)
 		delete(package_name)
 	}
-
-	// log.debug("Packages", packages)
 
 	return Registry{count = int(packages_count), packages = packages}
 }
