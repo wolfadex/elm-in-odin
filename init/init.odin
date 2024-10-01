@@ -118,12 +118,14 @@ create_elm_json :: proc() {
 			return
 		}
 
-		registry_data := parse_registry(data)
+		cached_registry := registry_parse(data)
 
-		for _, knwn_vers in registry_data.packages {
+		registry_update(&cached_registry)
+
+		for _, knwn_vers in cached_registry.packages {
 			delete_dynamic_array(knwn_vers.previous)
 		}
-		delete_map(registry_data.packages)
+		delete_map(cached_registry.packages)
 	} else {
 		// todo fetch data
 		log.debug("Registry is missing!?")
@@ -132,8 +134,12 @@ create_elm_json :: proc() {
 	fmt.println("Okay, I created it. Now read that link!")
 }
 
+registry_update :: proc(cached_registry: ^Registry) {
+	//
+}
 
-parse_registry :: proc(data: []u8) -> Registry {
+
+registry_parse :: proc(data: []u8) -> Registry {
 	// The first 8 bytes are the count of total package verseions
 	package_versions_count, package_versions_count_ok := endian.get_u64(
 		data[:8],
