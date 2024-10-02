@@ -2,6 +2,7 @@ package init
 
 
 import "../terminal"
+import http_client "../vendored/odin-http/client"
 import "../version"
 import "core:encoding/ansi"
 import "core:encoding/endian"
@@ -135,7 +136,77 @@ create_elm_json :: proc() {
 }
 
 registry_update :: proc(cached_registry: ^Registry) {
-	//
+	req: http_client.Request
+	http_client.request_init(&req, .Post)
+	defer http_client.request_destroy(&req)
+
+	full_url := fmt.aprintf(
+		"https://package.elm-lang.org/all-packages/since/%d",
+		cached_registry.count,
+	)
+	defer delete(full_url)
+
+	res, err := http_client.request(&req, full_url)
+	if err != nil {
+		log.error("Request failed:", err)
+		return
+	}
+	defer http_client.response_destroy(&res)
+
+	if res.status == .OK {
+		body_type, was_an_allocation, body_err := http_client.response_body(&res)
+		if body_err != nil {
+			log.error("Error retrieving response body:", body_err)
+			return
+		}
+		defer http_client.body_destroy(body_type, was_an_allocation)
+
+		// log.debug("Body", body_type)
+		switch body in body_type {
+		case http_client.Body_Error:
+		// 🤔
+		case http_client.Body_Url_Encoded:
+		// 🤔
+		case http_client.Body_Plain:
+			new_packages: [dynamic]string
+			new_pacakges_err := json.unmarshal(transmute([]u8)body, &new_packages)
+
+			if new_pacakges_err != nil {
+				log.error("Error decoding new package data", new_pacakges_err)
+			}
+
+			new_pacakge_count := len(new_packages)
+
+			if len(new_packages) == 0 {
+				return
+			}
+
+			cached_registry.count += new_pacakge_count
+
+			for new_package in new_packages {
+				package_parts := strings.split(new_package, "@")
+
+				version, version_err := version.parse(package_parts[1])
+
+				if version_err != nil {
+					log.error("New package version parse error", version_err)
+					continue
+				}
+
+				old_package, old_package_exists := cached_registry.packages[package_parts[0]]
+
+				if old_package_exists {
+					append(&old_package.previous, old_package.newest)
+					old_package.newest = version
+					cached_registry.packages[package_parts[0]] = old_package
+				} else {
+					cached_registry.packages[package_parts[0]] = KnownVersions {
+						newest = version,
+					}
+				}
+			}
+		}
+	}
 }
 
 
@@ -146,7 +217,7 @@ registry_parse :: proc(data: []u8) -> Registry {
 		endian.Byte_Order.Big,
 	)
 	// The next 8 bytes are the count of total packages
-	packages_count, packages_count_ok := endian.get_u64(data[8:16], endian.Byte_Order.Big)
+	packages_count, _ := endian.get_u64(data[8:16], endian.Byte_Order.Big)
 
 	packages: map[string]KnownVersions
 
@@ -210,7 +281,7 @@ registry_parse :: proc(data: []u8) -> Registry {
 		delete(package_name)
 	}
 
-	return Registry{count = int(packages_count), packages = packages}
+	return Registry{count = int(package_versions_count), packages = packages}
 }
 
 
