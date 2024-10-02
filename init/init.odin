@@ -13,6 +13,7 @@ import "core:log"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
@@ -94,7 +95,7 @@ Check out ` +
 		case "n":
 			fmt.println("Okay, I did not make any changes!")
 			break get_answer
-		case "y", "Y":
+		case "", "y", "Y":
 			create_elm_json()
 			break get_answer
 		case:
@@ -119,12 +120,18 @@ create_elm_json :: proc() {
 			return
 		}
 
-		cached_registry := registry_parse(data)
+		cached_registry := registry_decode(data)
 
 		registry_update(&cached_registry)
 
-		for _, knwn_vers in cached_registry.packages {
+		encoded_reg := registry_encode(&cached_registry)
+		carl_path := filepath.join({cache_dir, "registry.dat-odin"})
+		defer delete(carl_path)
+		write_err := os.write_entire_file_or_err(carl_path, encoded_reg)
+
+		for nme, knwn_vers in cached_registry.packages {
 			delete_dynamic_array(knwn_vers.previous)
+			delete(nme)
 		}
 		delete_map(cached_registry.packages)
 	} else {
@@ -210,7 +217,66 @@ registry_update :: proc(cached_registry: ^Registry) {
 }
 
 
-registry_parse :: proc(data: []u8) -> Registry {
+registry_encode :: proc(registry: ^Registry) -> []u8 {
+	data_size: u64 = 16
+	data := make([dynamic]u8, data_size)
+
+	endian.put_u64(data[:8], endian.Byte_Order.Big, u64(registry.count))
+
+	packages_count := len(registry.packages)
+	endian.put_u64(data[8:16], endian.Byte_Order.Big, u64(packages_count))
+
+	byte_offset: u64 = 16
+
+	package_name_sort :: proc(i, j: slice.Map_Entry(string, KnownVersions)) -> bool {
+		return i.key < j.key
+	}
+	packages, packages_to_slice_err := slice.map_entries(registry.packages)
+	slice.sort_by(packages, package_name_sort)
+
+	for pkg in packages {
+		data_size += 1 + 1 + 3 + 8 + (3 * u64(len(pkg.value.previous)))
+
+		package_name := pkg.key
+		for name_part in strings.split_iterator(&package_name, "/") {
+			name_len := u64(len(name_part))
+
+			data_size += name_len
+			resize(&data, data_size)
+
+			suc := endian.put_u64(data[byte_offset:], endian.Byte_Order.Big, name_len)
+			log.debug("Length & byte", name_len, data[byte_offset], suc)
+			byte_offset += 1
+
+			for i: u64 = 0; i < name_len; i += 1 {
+				data[byte_offset + i] = name_part[i]
+			}
+			byte_offset += name_len
+		}
+
+		version.encode_bytes(data[byte_offset:], pkg.value.newest)
+		byte_offset += 3
+
+		previous_versions_count := len(pkg.value.previous)
+
+		endian.put_u64(
+			data[byte_offset:byte_offset + 8],
+			endian.Byte_Order.Big,
+			u64(previous_versions_count),
+		)
+		byte_offset += 8
+
+		for i := 0; i < previous_versions_count; i += 1 {
+			version.encode_bytes(data[byte_offset:], pkg.value.previous[i])
+			byte_offset += 3
+		}
+	}
+
+	return data[:]
+}
+
+
+registry_decode :: proc(data: []u8) -> Registry {
 	// The first 8 bytes are the count of total package verseions
 	package_versions_count, package_versions_count_ok := endian.get_u64(
 		data[:8],
@@ -278,7 +344,6 @@ registry_parse :: proc(data: []u8) -> Registry {
 
 		// and finally the full package
 		map_insert(&packages, package_name, known_versions)
-		delete(package_name)
 	}
 
 	return Registry{count = int(package_versions_count), packages = packages}

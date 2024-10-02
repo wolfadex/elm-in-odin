@@ -64,3 +64,9 @@ decode_bytes :: proc(data: []u8, start_offset: u64) -> (version: Version, end_of
 
 	return {major_version, minor_version, patch_version}, end_offset + 1
 }
+
+encode_bytes :: proc(data: []u8, version: Version) {
+	data[0] = version.x
+	data[1] = version.y
+	data[2] = version.z
+}
