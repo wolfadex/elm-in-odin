@@ -229,7 +229,14 @@ registry_encode :: proc(registry: ^Registry) -> []u8 {
 	byte_offset: u64 = 16
 
 	package_name_sort :: proc(i, j: slice.Map_Entry(string, KnownVersions)) -> bool {
-		return i.key < j.key
+		i_sep_index := strings.index(i.key, "/")
+		j_sep_index := strings.index(j.key, "/")
+
+		if i.key[:i_sep_index] == j.key[:j_sep_index] {
+			return i.key[i_sep_index:] < j.key[j_sep_index:]
+		}
+
+		return i.key[:i_sep_index] < j.key[:j_sep_index]
 	}
 	packages, packages_to_slice_err := slice.map_entries(registry.packages)
 	slice.sort_by(packages, package_name_sort)
@@ -240,10 +247,6 @@ registry_encode :: proc(registry: ^Registry) -> []u8 {
 		package_name := pkg.key
 		for name_part in strings.split_iterator(&package_name, "/") {
 			name_len := u8(len(name_part))
-
-			if name_part == "avh4" {
-				log.debug("avh4", name_part, name_len, package_name)
-			}
 
 			data_size += u64(name_len)
 			resize(&data, data_size)
