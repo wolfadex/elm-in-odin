@@ -27,7 +27,7 @@ Registry :: struct {
 
 KnownVersions :: struct {
 	newest:   version.Version,
-	previous: [dynamic]version.Version,
+	previous: []version.Version,
 }
 
 
@@ -53,7 +53,7 @@ load :: proc(cache_dir: string, registry: ^Registry) {
 		}
 
 		for nme, knwn_vers in registry.packages {
-			delete_dynamic_array(knwn_vers.previous)
+			delete(knwn_vers.previous)
 			delete(nme)
 		}
 		delete_map(registry.packages)
@@ -100,7 +100,7 @@ fetch :: proc(registry: ^Registry) {
 		case http_client.Body_Url_Encoded:
 		// 🤔
 		case http_client.Body_Plain:
-			packages: map[string]([dynamic]version.Version)
+			packages: map[string]([]version.Version)
 			new_pacakges_err := json.unmarshal(transmute([]u8)body, &packages)
 			defer delete(packages)
 
@@ -120,10 +120,7 @@ fetch :: proc(registry: ^Registry) {
 				map_insert(
 					&registry.packages,
 					package_name,
-					KnownVersions {
-						newest = newest_version,
-						previous = slice.clone_to_dynamic(previous_versions),
-					},
+					KnownVersions{newest = newest_version, previous = previous_versions},
 				)
 			}
 		}
@@ -166,7 +163,7 @@ update :: proc(cached_registry: ^Registry) -> (has_changes: bool) {
 		case http_client.Body_Url_Encoded:
 		// 🤔
 		case http_client.Body_Plain:
-			new_packages: [dynamic]string
+			new_packages: []string
 			new_pacakges_err := json.unmarshal(transmute([]u8)body, &new_packages)
 			defer delete(new_packages)
 
@@ -185,7 +182,7 @@ update :: proc(cached_registry: ^Registry) -> (has_changes: bool) {
 			for new_package in new_packages {
 				package_parts_index := strings.index(new_package, "@")
 
-				version, version_err := version.parse(new_package[package_parts_index + 1:])
+				newest_version, version_err := version.parse(new_package[package_parts_index + 1:])
 
 				if version_err != nil {
 					log.error("New package version parse error", version_err)
@@ -196,13 +193,24 @@ update :: proc(cached_registry: ^Registry) -> (has_changes: bool) {
 					cached_registry.packages[new_package[:package_parts_index]]
 
 				if old_package_exists {
-					append(&old_package.previous, old_package.newest)
-					old_package.newest = version
-					cached_registry.packages[new_package[:package_parts_index]] = old_package
+					if len(old_package.previous) == 0 {
+						cached_registry.packages[new_package[:package_parts_index]] =
+							KnownVersions {
+								newest   = newest_version,
+								previous = {old_package.newest},
+							}
+					} else {
+						previous_versions := make([]version.Version, len(old_package.previous) + 1)
+						previous_versions = old_package.previous[:]
+						previous_versions[len(old_package.previous)] = old_package.newest
+						old_package.previous = previous_versions
+						old_package.newest = newest_version
+						cached_registry.packages[new_package[:package_parts_index]] = old_package
+					}
 				} else {
 					cached_registry.packages[new_package[:package_parts_index]] = KnownVersions {
-						newest = version,
-					}
+							newest = newest_version,
+						}
 				}
 			}
 
@@ -320,8 +328,7 @@ decode :: proc(data: []u8, registry: ^Registry) {
 		)
 		byte_offset += 8
 
-		previous_versions: [dynamic]version.Version
-		reserve(&previous_versions, previous_versions_count)
+		previous_versions := make([]version.Version, previous_versions_count)
 
 		// which we then decode
 		for versions_decoded: u64 = 0;
@@ -329,7 +336,7 @@ decode :: proc(data: []u8, registry: ^Registry) {
 		    versions_decoded += 1 {
 
 			prev_version, following_offset := version.decode_bytes(data, byte_offset)
-			append(&previous_versions, prev_version)
+			previous_versions[versions_decoded] = prev_version
 			byte_offset = following_offset
 		}
 
