@@ -239,19 +239,22 @@ registry_encode :: proc(registry: ^Registry) -> []u8 {
 
 		package_name := pkg.key
 		for name_part in strings.split_iterator(&package_name, "/") {
-			name_len := u64(len(name_part))
+			name_len := u8(len(name_part))
 
-			data_size += name_len
+			if name_part == "avh4" {
+				log.debug("avh4", name_part, name_len, package_name)
+			}
+
+			data_size += u64(name_len)
 			resize(&data, data_size)
 
-			suc := endian.put_u64(data[byte_offset:], endian.Byte_Order.Big, name_len)
-			log.debug("Length & byte", name_len, data[byte_offset], suc)
+			data[byte_offset] = name_len
 			byte_offset += 1
 
-			for i: u64 = 0; i < name_len; i += 1 {
+			for i: u64 = 0; i < u64(name_len); i += 1 {
 				data[byte_offset + i] = name_part[i]
 			}
-			byte_offset += name_len
+			byte_offset += u64(name_len)
 		}
 
 		version.encode_bytes(data[byte_offset:], pkg.value.newest)
