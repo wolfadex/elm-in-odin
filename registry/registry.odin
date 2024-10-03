@@ -44,27 +44,92 @@ load :: proc(cache_dir: string, registry: ^Registry) {
 			return
 		}
 
-		cached_registry := decode(data)
+		decode(data, registry)
 
-		has_changes := update(&cached_registry)
+		has_changes := update(registry)
 
 		if has_changes {
-			encoded_reg := encode(&cached_registry)
-			defer delete(encoded_reg)
-			carl_path := filepath.join({cache_dir, "registry.dat-odin"})
-			defer delete(carl_path)
-			write_err := os.write_entire_file_or_err(carl_path, encoded_reg)
+			write_cache(cache_dir, registry)
 		}
 
-		for nme, knwn_vers in cached_registry.packages {
+		for nme, knwn_vers in registry.packages {
 			delete_dynamic_array(knwn_vers.previous)
 			delete(nme)
 		}
-		delete_map(cached_registry.packages)
+		delete_map(registry.packages)
 	} else {
-		// todo fetch data
-		log.debug("Registry is missing!?")
+		fetch(registry)
+		write_cache(cache_dir, registry)
 	}
+}
+
+
+write_cache :: proc(cache_dir: string, registry: ^Registry) {
+	encoded_reg := encode(registry)
+	defer delete(encoded_reg)
+	carl_path := filepath.join({cache_dir, "registry.dat-odin"})
+	defer delete(carl_path)
+	write_err := os.write_entire_file_or_err(carl_path, encoded_reg)
+}
+
+
+fetch :: proc(registry: ^Registry) {
+	req: http_client.Request
+	http_client.request_init(&req, .Post)
+	defer http_client.request_destroy(&req)
+
+	res, err := http_client.request(&req, "https://package.elm-lang.org/all-packages")
+	if err != nil {
+		log.error("Request failed:", err)
+		return
+	}
+	defer http_client.response_destroy(&res)
+
+	if res.status == .OK {
+		body_type, was_an_allocation, body_err := http_client.response_body(&res)
+		if body_err != nil {
+			log.error("Error retrieving response body:", body_err)
+			return
+		}
+		defer http_client.body_destroy(body_type, was_an_allocation)
+
+		// log.debug("Body", body_type)
+		switch body in body_type {
+		case http_client.Body_Error:
+		// 🤔
+		case http_client.Body_Url_Encoded:
+		// 🤔
+		case http_client.Body_Plain:
+			packages: map[string]([dynamic]version.Version)
+			new_pacakges_err := json.unmarshal(transmute([]u8)body, &packages)
+			defer delete(packages)
+
+			if new_pacakges_err != nil {
+				log.error("Error decoding package data", new_pacakges_err)
+			}
+
+			keys, _ := slice.map_keys(packages)
+			defer delete(keys)
+			pacakge_count := len(keys)
+
+			registry.count += pacakge_count
+
+			for package_name, package_versions in packages {
+				previous_versions, newest_version := slice.split_last(package_versions[:])
+				defer delete(previous_versions)
+				map_insert(
+					&registry.packages,
+					package_name,
+					KnownVersions {
+						newest = newest_version,
+						previous = slice.clone_to_dynamic(previous_versions),
+					},
+				)
+			}
+		}
+	}
+
+	return
 }
 
 
@@ -215,16 +280,15 @@ encode :: proc(registry: ^Registry) -> []u8 {
 }
 
 
-decode :: proc(data: []u8) -> Registry {
+decode :: proc(data: []u8, registry: ^Registry) {
 	// The first 8 bytes are the count of total package verseions
 	package_versions_count, package_versions_count_ok := endian.get_u64(
 		data[:8],
 		endian.Byte_Order.Big,
 	)
+	registry.count = int(package_versions_count)
 	// The next 8 bytes are the count of total packages
 	packages_count, _ := endian.get_u64(data[8:16], endian.Byte_Order.Big)
-
-	packages: map[string]KnownVersions
 
 	byte_offset: u64 = 16
 
@@ -282,10 +346,8 @@ decode :: proc(data: []u8) -> Registry {
 		}
 
 		// and finally the full package
-		map_insert(&packages, package_name, known_versions)
+		map_insert(&registry.packages, package_name, known_versions)
 	}
-
-	return Registry{count = int(package_versions_count), packages = packages}
 }
 
 
